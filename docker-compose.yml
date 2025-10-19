@@ -1,0 +1,102 @@
+services:
+  # Servicio de Base de Datos MariaDB
+  mariadb:
+    image: mariadb:11.2
+    container_name: cosmeticos_mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: mercy_pass_2025
+      MARIADB_DATABASE: cosmeticos_mercy
+      MARIADB_CHARACTER_SET: utf8mb4
+      MARIADB_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./database_setup.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - cosmeticos_network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Servicio de la Aplicación de Consola
+  app-console:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cosmeticos_app_console
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_NAME: cosmeticos_mercy
+      DB_USER: root
+      DB_PASSWORD: mercy_pass_2025
+    networks:
+      - cosmeticos_network
+    stdin_open: true
+    tty: true
+    command: console
+
+  # Servicio de la Aplicación con GUI
+  # Para Windows: Requiere VcXsrv o X410
+  # Para Linux: xhost +local:docker antes de ejecutar
+  app-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cosmeticos_app_gui
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_NAME: cosmeticos_mercy
+      DB_USER: root
+      DB_PASSWORD: mercy_pass_2025
+      # Para Windows con VcXsrv/X410
+      DISPLAY: host.docker.internal:0
+      # Para Linux/Mac descomentar la siguiente línea y comentar la anterior
+      # DISPLAY: ${DISPLAY:-:0}
+    volumes:
+      # Para Linux/Mac
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    networks:
+      - cosmeticos_network
+    stdin_open: true
+    tty: true
+    command: gui
+    # Configuración adicional para GUI
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # PhpMyAdmin para administración de la base de datos (opcional)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: cosmeticos_phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - mariadb
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: mercy_pass_2025
+    ports:
+      - "8080:80"
+    networks:
+      - cosmeticos_network
+
+networks:
+  cosmeticos_network:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+    driver: local
